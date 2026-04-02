@@ -13,3 +13,17 @@ export function createContext(task: string): ChatCompletionMessageParam[] {
     { role: "user", content: task },
   ];
 }
+
+// Drop old tool messages if context grows too large.
+// Always keep the system prompt and original user task.
+export function trimContext(
+  messages: ChatCompletionMessageParam[],
+  maxMessages: number
+): ChatCompletionMessageParam[] {
+  if (messages.length <= maxMessages) return messages;
+
+  const [system, user] = messages;
+  const rest = messages.slice(2);
+  const trimmed = rest.slice(rest.length - (maxMessages - 2));
+  return [system, user, ...trimmed];
+}

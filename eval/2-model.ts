@@ -6,29 +6,30 @@
 // swap the model string to test a different one.
 // ─────────────────────────────────────────────
 
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import "dotenv/config";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+const client = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
 });
 
 export async function callModel(
   model: string,
   prompt: string
 ): Promise<string> {
-  const response = await client.messages.create({
+  const response = await client.chat.completions.create({
     model,
     max_tokens: 64,
-    system:
-      "Answer as briefly as possible. One word or number if you can. No punctuation.",
-    messages: [{ role: "user", content: prompt }],
+    messages: [
+      {
+        role: "system",
+        content:
+          "Answer as briefly as possible. One word or number if you can. No punctuation.",
+      },
+      { role: "user", content: prompt },
+    ],
   });
 
-  const text = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
-
-  return text.trim();
+  return response.choices[0].message.content?.trim() ?? "";
 }

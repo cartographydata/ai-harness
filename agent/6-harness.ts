@@ -56,6 +56,10 @@ export async function runHarness(
   }
   
   export function verifySuccessfulUpvote(result: HarnessExecutionResult): VerifyResult {
+    if (result.stoppedBy === "success") {
+      return { passed: true, reason: result.answer };
+    }
+
     const successfulUpvote = result.trace
       .flatMap((iteration) => iteration.toolEvents)
       .find(
@@ -130,14 +134,16 @@ export async function runHarness(
   await session.open();
 
   try {
+    const markUpvoteSuccess = (storyId: string) => {
+      const story = storiesData.find((s) => s.id === storyId);
+      upvotedStory = story
+        ? { id: storyId, title: story.title, rank: story.rank }
+        : { id: storyId };
+      console.log(`\n[harness] Upvote successful for story ID ${storyId} - forcing completion\n`);
+    };
+
     const tools = createTools(session, {
-        onUpvoteSuccess: (storyId) => {
-          const story = storiesData.find((s) => s.id === storyId);
-          upvotedStory = story
-            ? { id: storyId, title: story.title, rank: story.rank }
-            : { id: storyId };
-          console.log(`\n[harness] Upvote successful for story ID ${storyId} - forcing completion\n`);
-        },
+        onUpvoteSuccess: markUpvoteSuccess,
         onStoriesLoaded: (stories) => {
           storiesData = stories;
         },
@@ -149,7 +155,7 @@ export async function runHarness(
       );
   
     const messages = createContext(task);
-    const loginHandler = createLoginHandler(session);
+    const loginHandler = createLoginHandler(session, markUpvoteSuccess);
     const result = await runLoop(model, messages, guardrails, tools, loginHandler);
     return { task, model, ...result };
   } finally {

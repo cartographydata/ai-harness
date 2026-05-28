@@ -36,6 +36,7 @@ export async function runLoop(
   messages: ChatCompletionMessageParam[],
   guardrail: GuardrailFn,
   tools: ToolRegistry,           // injected by the harness, not imported globally
+  loginHandler?: LoginHandler,
 ): Promise<LoopResult> {
   const trace: LoopIteration[] = [];
 

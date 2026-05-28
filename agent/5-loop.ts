@@ -1,8 +1,12 @@
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import type {
+  MessageParam,
+  ToolResultBlockParam,
+} from "@anthropic-ai/sdk/resources/messages";
 import { client } from "./2-model.js";
+import type { AgentContext } from "./3-context.js";
 import type { ToolRegistry } from "./1-tools.js";
 
-const MAX_CONTEXT_MESSAGES = 20;
+const MAX_TOKENS = 4096;
 
 // A single tool call + its result, captured for the trace
 export type ToolEvent = {
@@ -29,33 +33,39 @@ export type LoopResult = {
 
 export async function runLoop(
   model: string,
-  messages: ChatCompletionMessageParam[],
-  tools: ToolRegistry,           // injected by the harness, not imported globally
+  context: AgentContext,
+  tools: ToolRegistry,
 ): Promise<LoopResult> {
   const trace: LoopIteration[] = [];
+  const messages: MessageParam[] = [...context.messages];
 
   while (true) {
     const iterationIndex = trace.length + 1;
 
     // ── Model call ────────────────────────────
     process.stdout.write(`[iter ${iterationIndex}] calling model... `);
-    const response = await client.chat.completions.create({
+    const response = await client.messages.create({
       model,
+      max_tokens: MAX_TOKENS,
+      system: context.system,
       messages,
       tools: tools.definitions,
     });
 
-    const choice = response.choices[0];
     const contextSize = messages.length;
-    console.log(`${choice.finish_reason}`);
+    console.log(response.stop_reason ?? "unknown");
 
-    messages.push(choice.message as ChatCompletionMessageParam);
+    messages.push({ role: "assistant", content: response.content });
 
     // ── Final answer ──────────────────────────
-    if (choice.finish_reason === "stop") {
+    if (response.stop_reason === "end_turn") {
+      const answer = response.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("");
       trace.push({ index: iterationIndex, outcome: "answer", toolEvents: [], contextSize });
       return {
-        answer: choice.message.content ?? "(no response)",
+        answer: answer || "(no response)",
         iterations: trace.length,
         trace,
         stoppedBy: "model",
@@ -63,12 +73,15 @@ export async function runLoop(
     }
 
     // ── Tool calls → execute → loop ───────────
-    if (choice.finish_reason === "tool_calls") {
+    if (response.stop_reason === "tool_use") {
       const toolEvents: ToolEvent[] = [];
+      const toolResults: ToolResultBlockParam[] = [];
 
-      for (const call of choice.message.tool_calls ?? []) {
-        const name = call.function.name;
-        const args = JSON.parse(call.function.arguments) as Record<string, unknown>;
+      for (const block of response.content) {
+        if (block.type !== "tool_use") continue;
+
+        const name = block.name;
+        const args = block.input as Record<string, unknown>;
 
         const tool = tools.byName.get(name);
         process.stdout.write(`           → ${name}(${JSON.stringify(args)}) ... `);
@@ -82,9 +95,14 @@ export async function runLoop(
         }
 
         toolEvents.push({ tool: name, args, result });
-        messages.push({ role: "tool", tool_call_id: call.id, content: result });
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: result,
+        });
       }
 
+      messages.push({ role: "user", content: toolResults });
       trace.push({ index: iterationIndex, outcome: "tool_calls", toolEvents, contextSize });
     }
   }

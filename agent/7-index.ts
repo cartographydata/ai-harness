@@ -3,8 +3,7 @@ import { createContext } from "./3-context.js";
 import { runLoop } from "./5-loop.js";
 import { BrowserSession } from "./browser.js";
 
-// try a shitty model
-const MODEL = "openai/gpt-3.5-turbo-0613";
+const MODEL = "claude-sonnet-4-20250514";
 
 const TASK = `
 Upvote a story on Hacker News.
@@ -24,8 +23,8 @@ try {
   await session.open();
 
   const tools = createTools(session);
-  const messages = createContext(TASK);
-  const result = await runLoop(MODEL, messages, tools);
+  const context = createContext(TASK);
+  const result = await runLoop(MODEL, context, tools);
 
   console.log(`\nAnswer: ${result.answer}`);
   console.log(`Stopped by: ${result.stoppedBy}`);

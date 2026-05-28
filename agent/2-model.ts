@@ -1,8 +1,8 @@
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import "dotenv/config";
 
-// OpenRouter is OpenAI-compatible. We just swap the baseURL.
-export const client = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: process.env.OPENROUTER_API_KEY,
+export const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
 });
+
+export type { MessageParam as AgentMessage } from "@anthropic-ai/sdk/resources/messages";

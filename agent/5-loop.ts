@@ -1,5 +1,7 @@
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { client } from "./2-model.js";
+import { trimContext } from "./3-context.js";
+import type { GuardrailFn } from "./4-guardrails.js";
 import type { ToolRegistry } from "./1-tools.js";
 
 const MAX_CONTEXT_MESSAGES = 20;
@@ -17,6 +19,7 @@ export type LoopIteration = {
   outcome: "tool_calls" | "answer";
   toolEvents: ToolEvent[];    // empty if outcome is "answer"
   contextSize: number;        // how many messages were in context for this call
+  contextTrimmed: boolean;    // true if we dropped old messages before this call
 };
 
 export type LoopResult = {
@@ -30,12 +33,23 @@ export type LoopResult = {
 export async function runLoop(
   model: string,
   messages: ChatCompletionMessageParam[],
+  guardrail: GuardrailFn,
   tools: ToolRegistry,           // injected by the harness, not imported globally
 ): Promise<LoopResult> {
   const trace: LoopIteration[] = [];
 
   while (true) {
     const iterationIndex = trace.length + 1;
+
+  // Guardrail 3.a: Keep the context size below a threshold.
+  const beforeTrim = messages.length;
+  messages = trimContext(messages, MAX_CONTEXT_MESSAGES);
+  const contextTrimmed = messages.length < beforeTrim;
+
+  const check = guardrail({ iterations: trace.length, messages });
+  if (!check.ok) {
+    return { answer: check.reason, iterations: trace.length, trace, stoppedBy: "guardrail" };
+  }
 
     // ── Model call ────────────────────────────
     process.stdout.write(`[iter ${iterationIndex}] calling model... `);
@@ -53,7 +67,7 @@ export async function runLoop(
 
     // ── Final answer ──────────────────────────
     if (choice.finish_reason === "stop") {
-      trace.push({ index: iterationIndex, outcome: "answer", toolEvents: [], contextSize });
+      trace.push({ index: iterationIndex, outcome: "answer", toolEvents: [], contextSize, contextTrimmed });
       return {
         answer: choice.message.content ?? "(no response)",
         iterations: trace.length,
@@ -85,7 +99,7 @@ export async function runLoop(
         messages.push({ role: "tool", tool_call_id: call.id, content: result });
       }
 
-      trace.push({ index: iterationIndex, outcome: "tool_calls", toolEvents, contextSize });
+      trace.push({ index: iterationIndex, outcome: "tool_calls", toolEvents, contextSize, contextTrimmed });
     }
   }
 }

@@ -1,5 +1,6 @@
 import { createTools } from "./1-tools.js";
 import { createContext } from "./3-context.js";
+import { defaultGuardrails } from "./4-guardrails.ts";
 import { runLoop } from "./5-loop.js";
 import { BrowserSession } from "./browser.js";
 
@@ -25,7 +26,7 @@ try {
 
   const tools = createTools(session);
   const messages = createContext(TASK);
-  const result = await runLoop(MODEL, messages, tools);
+  const result = await runLoop(MODEL, messages, defaultGuardrails, tools);
 
   console.log(`\nAnswer: ${result.answer}`);
   console.log(`Stopped by: ${result.stoppedBy}`);

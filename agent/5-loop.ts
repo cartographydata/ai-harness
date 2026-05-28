@@ -29,6 +29,7 @@ export type LoopResult = {
   stoppedBy: "model" | "guardrail" | "success";
 };
 
+export type LoginHandler = () => Promise<ToolEvent | null>;
 
 export async function runLoop(
   model: string,
@@ -48,7 +49,8 @@ export async function runLoop(
 
   const check = guardrail({ iterations: trace.length, messages });
   if (!check.ok) {
-    return { answer: check.reason, iterations: trace.length, trace, stoppedBy: "guardrail" };
+    const stoppedBy = check.reason.startsWith("Successfully") ? "success" : "guardrail";
+    return { answer: check.reason, iterations: trace.length, trace, stoppedBy };
   }
 
     // ── Model call ────────────────────────────
@@ -99,6 +101,18 @@ export async function runLoop(
         messages.push({ role: "tool", tool_call_id: call.id, content: result });
       }
 
+      if (loginHandler) {
+        const loginEvent = await loginHandler();
+        if (loginEvent) {
+          toolEvents.push(loginEvent);
+          messages.push({
+            role: "user",
+            content: "Authentication completed by harness. You are now logged in. Navigate back to https://news.ycombinator.com and complete your upvote task.",
+          });
+        }
+      }
+
+      
       trace.push({ index: iterationIndex, outcome: "tool_calls", toolEvents, contextSize, contextTrimmed });
     }
   }
